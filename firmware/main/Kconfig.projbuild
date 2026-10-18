@@ -1,0 +1,85 @@
+menu "LogGuard"
+
+    config LOGGUARD_DEVICE_ID
+        string "Device ID"
+        default "lg-esp-poc1-01"
+        help
+            Sent in every MQTT message and used in the topic logguard/alerts/<id>.
+
+    menu "Wi-Fi and MQTT"
+        config LOGGUARD_WIFI_SSID
+            string "Wi-Fi SSID"
+            default "logguard-hotspot"
+        config LOGGUARD_WIFI_PASSWORD
+            string "Wi-Fi password (WPA2-PSK)"
+            default ""
+        config LOGGUARD_MQTT_URI
+            string "MQTT broker URI"
+            default "mqtt://192.168.43.100:1883"
+            help
+                Laptop running server/ (Mosquitto). With a phone hotspot this is
+                the laptop's address on the hotspot network.
+        config LOGGUARD_MQTT_USER
+            string "MQTT user"
+            default "logguard"
+        config LOGGUARD_MQTT_PASSWORD
+            string "MQTT password"
+            default ""
+        config LOGGUARD_WIFI_ON_DEMAND
+            bool "Turn Wi-Fi on only to send"
+            default y
+            help
+                Keeps the radio off while listening, which test T4 needs.
+                The time is synced once at boot. Turn off for a quicker
+                alert path during desk tests.
+        config LOGGUARD_HEARTBEAT_MIN
+            int "Heartbeat every N minutes (0 = off)"
+            range 0 1440
+            default 10
+    endmenu
+
+    menu "Detection"
+        config LOGGUARD_THRESHOLD_PCT
+            int "Chainsaw probability threshold (%)"
+            range 1 99
+            default 80
+        config LOGGUARD_CONSEC_NEEDED
+            int "Consecutive windows above threshold before an alert"
+            range 1 20
+            default 3
+            help
+                Windows are 1 s long and start every 0.5 s, so 3 means about 2 s of sound.
+        config LOGGUARD_COOLDOWN_S
+            int "Cooldown after an alert (s)"
+            range 0 3600
+            default 60
+            help
+                The device keeps listening and logging during the cooldown; it only
+                holds back further alerts.
+        config LOGGUARD_MIC_GAIN_DB
+            int "Digital microphone gain (dB)"
+            range -20 40
+            default 0
+            help
+                Calibrate in test T2 so the MEMS level matches the training data.
+        config LOGGUARD_LOG_SCORES
+            bool "Log the score of every window"
+            default y
+        config LOGGUARD_SELFTEST
+            bool "Run the MFCC and model parity self-test (T1) at boot"
+            default y
+    endmenu
+
+    menu "INMP441 pins"
+        config LOGGUARD_I2S_BCLK
+            int "SCK (BCLK) GPIO"
+            default 4
+        config LOGGUARD_I2S_WS
+            int "WS (LRCLK) GPIO"
+            default 5
+        config LOGGUARD_I2S_DIN
+            int "SD (data) GPIO"
+            default 6
+    endmenu
+
+endmenu
