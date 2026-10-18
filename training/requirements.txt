@@ -1,0 +1,5 @@
+numpy>=1.26
+scipy>=1.11
+tensorflow>=2.16
+datasets>=2.19   # only for real training data (rfcx/frugalai)
+pytest>=8
