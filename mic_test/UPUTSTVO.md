@@ -22,7 +22,7 @@ Jedna namjerna razlika: test čita **oba** slota (lijevi i desni), a firmver sam
 
 Šta test ispisuje dva puta u sekundi: nivo (RMS) i vrh (peak) lijevog slota u dBFS, približan nivo zvuka u dB SPL, DC pomak, nivo desnog slota, prvu sirovu 32-bitnu riječ, broj riječi kojima donji bajt nije 0 i dijagnozu (`OK` ili opis greške). Na zahtjev snima WAV od 5 s i šalje ga na laptop.
 
-Test je preveden sa ESP-IDF v5.3.2 za ESP32-S3 bez upozorenja; CRC-32, base64 i dijagnoza su provjereni na laptopu sa sintetičkim signalima (nula, sve jedinice, sinus −26 dBFS, desni slot, oba slota, klipovanje, pogrešno poravnanje). Na pravoj ploči još nije pokrenut. **VERIFIED (build i test logike), rad na ploči REQUIRES PHYSICAL VALIDATION**
+Test je preveden sa ESP-IDF v5.3.2 i v5.5.6 za ESP32-S3 bez upozorenja; CRC-32, base64 i dijagnoza su provjereni na laptopu sa sintetičkim signalima (nula, sve jedinice, sinus −26 dBFS, desni slot, oba slota, klipovanje, pogrešno poravnanje). Na pravoj ploči još nije pokrenut. **VERIFIED (build i test logike), rad na ploči REQUIRES PHYSICAL VALIDATION**
 
 ---
 

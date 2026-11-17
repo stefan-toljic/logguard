@@ -19,6 +19,6 @@ python tools/capture_wav.py COM5 snimak.wav   # monitor closed
 Wiring, how to read the numbers, typical faults and the pass criteria (with
 datasheet page references) are in [UPUTSTVO.md](UPUTSTVO.md) (Serbian).
 
-Checked so far: builds without warnings with ESP-IDF v5.3.2; CRC-32, base64
+Checked so far: builds without warnings with ESP-IDF v5.3.2 and v5.5.6; CRC-32, base64
 and the diagnosis were checked on the host with synthetic signals. Not yet run
 on the board.
