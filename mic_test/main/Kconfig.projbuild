@@ -1,0 +1,47 @@
+menu "LogGuard mic test"
+
+    config MICTEST_I2S_BCLK
+        int "SCK (BCLK) GPIO"
+        default 4
+        help
+            Same default as LOGGUARD_I2S_BCLK in firmware/main/Kconfig.projbuild.
+    config MICTEST_I2S_WS
+        int "WS (LRCLK) GPIO"
+        default 5
+        help
+            Same default as LOGGUARD_I2S_WS in firmware/main/Kconfig.projbuild.
+    config MICTEST_I2S_DIN
+        int "SD (data) GPIO"
+        default 6
+        help
+            Same default as LOGGUARD_I2S_DIN in firmware/main/Kconfig.projbuild.
+
+    config MICTEST_SAMPLE_RATE
+        int "Sample rate (Hz)"
+        range 8000 48000
+        default 16000
+        help
+            16 kHz as in the main firmware (mic.h). SCK = 64 x sample rate.
+
+    config MICTEST_REPORT_MS
+        int "Report interval (ms)"
+        range 100 5000
+        default 500
+
+    config MICTEST_SD_PULLDOWN
+        bool "Internal pull-down on SD"
+        default y
+        help
+            The INMP441 leaves SD in high impedance outside its own slot.
+            The pull-down holds the other slot at zero, so the log shows
+            clearly which slot the microphone uses (L/R diagnosis).
+
+    config MICTEST_WAV_SECONDS
+        int "WAV recording length (s), 0 = off"
+        range 0 6
+        default 5
+        help
+            Recording starts when the letter 'w' arrives on the serial port
+            (tools/capture_wav.py). It is kept in RAM as 16-bit PCM.
+
+endmenu
