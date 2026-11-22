@@ -12,11 +12,17 @@ ESP-IDF Python environment).
 """
 import argparse
 import base64
+import binascii
+import re
 import sys
 import time
 import zlib
 
 import serial
+
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+B64_LINE = re.compile(r"^[A-Za-z0-9+/]{4,64}={0,2}$")
+BYTES_PER_LINE = 48  # the firmware sends 48 bytes (64 base64 characters) per line
 
 
 def main() -> int:
@@ -44,8 +50,9 @@ def main() -> int:
     deadline = time.time() + args.timeout
     expected = crc = None
     chunks = []
+    rejected = []
     while time.time() < deadline:
-        line = ser.readline().decode("ascii", errors="replace").strip()
+        line = ANSI.sub("", ser.readline().decode("ascii", errors="replace")).strip()
         if not line:
             continue
         if expected is None:
@@ -58,15 +65,29 @@ def main() -> int:
             continue
         if line == "WAV_END":
             break
-        if line.startswith(("I (", "W (", "E (")):  # stray log line
-            continue
-        chunks.append(line)
+        if B64_LINE.match(line) and len(line) % 4 == 0:
+            chunks.append(line)
+        else:
+            rejected.append(line)
     ser.close()
 
     if expected is None:
         print("ERROR: no WAV_BEGIN. Is mic_test flashed with WAV enabled, and is the monitor closed?")
         return 1
-    data = base64.b64decode("".join(chunks))
+    if rejected:
+        print(f"WARNING: {len(rejected)} line(s) between the markers were not base64, for example:")
+        for r in rejected[:3]:
+            print("   ", r[:100])
+    want_lines = (expected + BYTES_PER_LINE - 1) // BYTES_PER_LINE
+    if len(chunks) != want_lines:
+        print(f"ERROR: got {len(chunks)} base64 lines, expected {want_lines}. Data was lost or mixed with")
+        print("       other output on the serial port; reset the board and try again.")
+        return 1
+    try:
+        data = base64.b64decode("".join(chunks), validate=True)
+    except binascii.Error as e:
+        print(f"ERROR: base64 decoding failed ({e}); reset the board and try again.")
+        return 1
     if len(data) != expected:
         print(f"ERROR: got {len(data)} bytes, expected {expected}")
         return 1

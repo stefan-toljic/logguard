@@ -131,7 +131,7 @@ Izlaz je nula prvih **2^18 SCK taktova** poslije uključenja (DS str. 10, *Start
 
 Za poređenje, iz power-downa (CHIPEN nizak → visok) treba 2^17 taktova (128 ms pri 1,024 MHz), a iz standbyja (SCK stao pa krenuo) 2^14 taktova (16 ms) (DS str. 10). **VERIFIED (DS, računica)**
 
-Test odbacuje prvih **8192 okvira (512 ms, rezerva 2×)** i ispisuje na kom okviru je stigao prvi uzorak različit od nule. Očekivano je oko 4096; to je ujedno provjera datasheeta na našem modulu. Moguće je i manje od 4096 ako je mikrofon već imao takt prije starta testa (npr. poslije soft reseta). **ENGINEERING DESIGN, REQUIRES PHYSICAL VALIDATION**
+Test odbacuje prvih **8192 okvira (512 ms, rezerva 2×)** i ispisuje na kom okviru je stigao prvi uzorak različit od nule. Očekivano je oko 4096; to je ujedno provjera datasheeta na našem modulu. Ovo važi samo za pravo uključenje napajanja. Kad `idf.py monitor` ili dugme RST resetuju ploču, mikrofon ostaje pod napajanjem; dok je SCK stao, on je u standbyju (DS str. 10), pa prvi uzorak različit od nule stiže odmah. Na ploči je 22. 11. 2026 poslije reseta preko monitora izmjereno: okvir 1. Prava provjera 4096 okvira traži log od samog uključenja USB-a, što monitor ne uhvati jer se port otvara tek poslije. **VERIFIED (log 22. 11.), ENGINEERING DESIGN (tumačenje)**
 
 ### 4.3 Filtri u mikrofonu
 
@@ -177,12 +177,12 @@ Kriterijumi su moj predlog za provjeru na stolu, nisu iz dokumenta PoC 1. Mikrof
 
 | # | Kriterijum | Kako se provjerava |
 |---|---|---|
-| K1 | Test se pokreće bez greške, `Start-up: first non-zero ...` se pojavi | početak loga; upiši broj okvira |
+| K1 | Test se pokreće bez greške, `Start-up: first non-zero ...` se pojavi (poslije reseta broj može biti 1, vidi 4.2) | početak loga; upiši broj okvira |
 | K2 | 30 s tišine pa 30 s govora: u svakom redu dijagnoza `OK` (ili `OK, CLIPPING` samo kod pljeska) i `lsb!=0 0/8000` | log |
 | K3 | Tišina: `L rms` između −90 i −60 dBFS, stabilno u opsegu ±3 dB 10 s | log |
 | K4 | Govor sa 30 cm: `L rms` bar **15 dB** iznad tišine | log |
 | K5 | Pljesak sa 30 cm: `peak` iznad **−20 dBFS** | log |
-| K6 | `dc` apsolutno manji od 0,001 | log |
+| K6 | `dc` apsolutno manji od 0,001 u tišini (u prozoru sa pljeskom je veći zbog high-pass filtra) | log |
 | K7 | `R rms -200.0` u svakom redu | log |
 | K8 | WAV od 5,0 s: govor razumljiv, bez periodičnih pucketanja i prekida | preslušavanje |
 

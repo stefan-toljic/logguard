@@ -15,6 +15,7 @@
 #include "driver/gpio.h"
 #include "driver/i2s_std.h"
 #include "driver/uart.h"
+#include "driver/uart_vfs.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -121,7 +122,7 @@ static esp_err_t mic_init(void)
 {
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
     chan_cfg.dma_desc_num = 8;
-    chan_cfg.dma_frame_num = 512;
+    chan_cfg.dma_frame_num = 511;   // 511 x 8 B (stereo, 32 bit) fits the 4092 B DMA buffer limit
     ESP_ERROR_CHECK(i2s_new_channel(&chan_cfg, NULL, &s_rx));
 
     i2s_std_config_t std_cfg = {
@@ -227,7 +228,12 @@ static void record_wav(void)
     uint32_t crc = crc32_update(0, wav, total);
     ESP_LOGI(TAG, "WAV: sending %u bytes as base64", (unsigned)total);
     printf("WAV_BEGIN %u %08" PRIx32 "\n", (unsigned)total, crc);
-    for (size_t i = 0; i < total; i += 48) b64_line(wav + i, total - i < 48 ? total - i : 48);
+    for (size_t i = 0, line = 0; i < total; i += 48, line++) {
+        b64_line(wav + i, total - i < 48 ? total - i : 48);
+        // The transfer takes about 20 s. Let the idle task run now and then so
+        // the task watchdog (5 s) never fires and prints into the base64 stream.
+        if (line % 32 == 31) vTaskDelay(1);
+    }
     printf("WAV_END\n");
     fflush(stdout);
     free(wav);
@@ -254,6 +260,10 @@ void app_main(void)
 
 #if CONFIG_MICTEST_WAV_SECONDS > 0
     ESP_ERROR_CHECK(uart_driver_install(CONSOLE, 256, 0, 0, NULL, 0));
+    // Route stdout through the driver: a write then blocks on an interrupt
+    // instead of busy-waiting on the FIFO, so other tasks (and the idle task
+    // the watchdog checks) keep running during the long WAV transfer.
+    uart_vfs_dev_use_driver(CONSOLE);
     ESP_LOGI(TAG, "Send 'w' to record a %d s WAV (tools/capture_wav.py).", CONFIG_MICTEST_WAV_SECONDS);
 #endif
 
