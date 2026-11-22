@@ -9,7 +9,12 @@
 #SBATCH --time=00:20:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=8G
+# No --mem: on the UDG cluster (22 Nov 2026) even --mem=4G fails with "Memory
+# specification can not be satisfied", which usually means the nodes are not
+# configured with their real RAM (RealMemory) in Slurm. Without --mem the job
+# can use the node's memory. Add --mem back only after `scontrol show node node01`
+# shows a RealMemory larger than what you ask for.
+##SBATCH --mem=8G
 # UDG cluster, `sinfo -N` on 22 Nov 2026: one partition "cpu" (default), node01 + node02
 #SBATCH --partition=cpu
 # Optional: pin to one node, as in Feliks's example

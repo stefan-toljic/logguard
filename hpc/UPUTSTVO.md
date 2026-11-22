@@ -19,7 +19,28 @@ Većinu može i sam da provjeriš poslije prijave (komanda desno).
 | 5 | Koliko diska imaš i gdje da držiš podatke (home ili scratch) | `df -h ~`, `quota -s` (ako postoji) |
 | 6 | Najduže dozvoljeno `--time` | kolona `%l` iz komande u redu 2 |
 
-Ako čvor ima manje od 16 jezgara ili 32 GB RAM-a (kolone `%c` i `%m`), smanji `--cpus-per-task` i `--mem` u `hpc/train.slurm`, inače posao ostaje u redu čekanja sa razlogom `Resources` ili ga Slurm odbije.
+Ako čvor ima manje od 16 jezgara (kolona `%c`), smanji `--cpus-per-task` u `hpc/train.slurm`, inače posao ostaje u redu čekanja sa razlogom `Resources` ili ga Slurm odbije.
+
+### Greška "Memory specification can not be satisfied"
+
+22. 11. 2026. probni posao sa `--mem=4G` je odbijen odmah pri `sbatch`:
+
+```
+sbatch: error: Memory specification can not be satisfied
+sbatch: error: Batch job submission failed: Requested node configuration is not available
+```
+
+**VERIFIED** (snimak ekrana). Slurm odbija zahtjev za memorijom kad nijedan čvor u particiji, po svojoj konfiguraciji, nema toliko RAM-a. Najčešći uzrok je da u konfiguraciji klastera čvorovima nije upisan stvarni RAM (`RealMemory`), pa Slurm misli da imaju 1 MB. **ENGINEERING DESIGN** (tumačenje, potvrđuje se komandom ispod)
+
+Zato skripte u repou **nemaju** `--mem` (red je zakomentarisan sa `##`). Provjera:
+
+```sh
+scontrol show node node01 | grep -Ei "RealMemory|CPUTot|AllocMem|CfgTRES"
+scontrol show config | grep -Ei "DefMemPer|MaxMemPer|SelectTypeParameters"
+```
+
+- Ako je `RealMemory=1` (ili vrlo mali broj): uzrok je potvrđen. Radi bez `--mem` i javi prof. Luki, jer to podešava administrator klastera.
+- Ako je `RealMemory` normalan (npr. 64000 = 64 GB): `--mem` smije biti najviše toliko; vrati red sa jednim `#` i stavi manju vrijednost.
 
 ## 1. Prijava i kod
 
