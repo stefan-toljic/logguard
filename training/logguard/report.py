@@ -60,7 +60,7 @@ def write_markdown(full, path):
         cs = d.get("clip_seconds", {})
         sk = d.get("skipped_short") or {}
         return (f"| {name} | {d.get('clips_in_dataset', d.get('clips'))} | {sk.get('count', 0)} "
-                f"(praznih: {sk.get("empty", 0)}; {_counts(sk.get('per_dataset_label')) or '-'}) | "
+                f"(praznih: {sk.get('empty', 0)}; {_counts(sk.get('per_dataset_label')) or '-'}) | "
                 f"{d.get('clips')} | {_counts(d.get('clips_per_dataset_label'))} | "
                 f"{', '.join(map(str, d.get('sample_rates_hz', [])))} | "
                 f"{_num(cs.get('min', 0), 2)} / {_num(cs.get('median', 0), 2)} / {_num(cs.get('max', 0), 2)} |")
