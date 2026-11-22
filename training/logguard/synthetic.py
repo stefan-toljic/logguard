@@ -5,6 +5,8 @@ over noise; "environment" = coloured noise with occasional chirps.
 """
 import numpy as np
 
+FAKE_MARKER = "SYNTHETIC_NOT_REAL_DATA"
+
 
 def chainsaw_like(rng, sr=12000, seconds=3.0):
     t = np.arange(int(sr * seconds)) / sr
@@ -37,3 +39,21 @@ def clips(n, seed=0, sr=12000):
             yield chainsaw_like(rng, sr), sr, 0
         else:
             yield environment_like(rng, sr), sr, 1
+
+
+def save_fake_dataset(path, n_train=80, n_test=24, seed=0, sr=12000):
+    """A tiny on-disk dataset shaped like rfcx/frugalai (columns audio, label;
+    12 kHz, 3 s, label 0 = chainsaw) for testing prepare_data/train without
+    network. Plumbing only, like clips()."""
+    from datasets import Audio, ClassLabel, Dataset, DatasetDict, Features
+
+    feats = Features({"audio": Audio(sampling_rate=sr),
+                      "label": ClassLabel(names=["chainsaw", "environment"])})
+
+    def split(n, s):
+        rows = [{"audio": {"array": a, "sampling_rate": r}, "label": lab} for a, r, lab in clips(n, s, sr)]
+        return Dataset.from_list(rows, features=feats)
+
+    DatasetDict({"train": split(n_train, seed), "test": split(n_test, seed + 1)}).save_to_disk(path)
+    with open(f"{path}/{FAKE_MARKER}", "w") as f:
+        f.write("synthetic stand-in, not rfcx/frugalai\n")

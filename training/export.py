@@ -7,7 +7,11 @@ Checks (fails loudly):
   * model file under --max-kb (default 40 KB)
   * every op in the model is registered in the firmware op resolver
 
-Writes into firmware/main/generated/:
+Also writes report.json and REPORT.md (metrics with their conditions) into
+the run directory, and a copy of the headers into <run>/generated/, so the
+whole run can be copied off the cluster as one folder.
+
+Writes into firmware/main/generated/ (or --gen-dir):
   model_data.cc / model_data.h  the .tflite as a C array
   model_meta.h                  CHAINSAW_IDX, feature mean/std, threshold
   selftest_vectors.h            PCM + expected MFCC + expected INT8 output (test T1)
@@ -16,6 +20,7 @@ Writes into firmware/main/generated/:
 import argparse
 import json
 import os
+import shutil
 import sys
 
 import numpy as np
@@ -23,6 +28,7 @@ import numpy as np
 from logguard import dataset as D
 from logguard import features as F
 from logguard import metrics, synthetic
+from logguard.report import write_markdown
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GEN_DIR = os.path.join(HERE, "..", "firmware", "main", "generated")
@@ -149,15 +155,26 @@ def main(argv=None):
     p.add_argument("--gen-dir", default=GEN_DIR)
     p.add_argument("--max-drop", type=float, default=0.03)
     p.add_argument("--max-kb", type=float, default=40)
+    # Same defaults as firmware/main/Kconfig.projbuild (LOGGUARD_THRESHOLD_PCT, _CONSEC_NEEDED)
     p.add_argument("--threshold", type=float, default=0.8)
+    p.add_argument("--consec", type=int, default=3)
     a = p.parse_args(argv)
+
+    cfg_path = os.path.join(a.run, "run_config.json")
+    run_config = {}
+    if os.path.exists(cfg_path):
+        with open(cfg_path) as f:
+            run_config = json.load(f)
+        F.configure(fmax=run_config["features"]["fmax"])
+    else:
+        print(f"WARNING: no {cfg_path}; using the default features (fmax {F.FMAX} Hz)")
 
     import tensorflow as tf
     model = tf.keras.models.load_model(os.path.join(a.run, "model.keras"))
     norm = np.load(os.path.join(a.run, "norm.npz"))
     mean, std = norm["mean"], norm["std"]
     data = np.load(os.path.join(a.run, "data.npz"))
-    n = lambda z: ((z - mean) / std)[..., np.newaxis].astype(np.float32)
+    n = lambda z: ((z - mean) / std)[..., np.newaxis].astype(np.float32)  # noqa: E731
 
     tflite_bytes = quantize(model, n(data["rep"]))
     with open(os.path.join(a.run, "chainsaw.tflite"), "wb") as f:
@@ -173,6 +190,15 @@ def main(argv=None):
               "in_scale": float(m.in_scale), "in_zp": int(m.in_zp)}
     print(json.dumps(report, indent=2))
 
+    full = {
+        "summary": report,
+        "ops": sorted(m.ops()),
+        "test_float_at_0.5": metrics.full_report(yt, pf, cidt, 0.5, a.consec),
+        "test_int8_at_0.5": metrics.full_report(yt, pq, cidt, 0.5, a.consec),
+        "test_int8_firmware": metrics.full_report(yt, pq, cidt, a.threshold, a.consec),
+        "run_config": run_config,
+    }
+
     errors = []
     if rf["window_f1"] - rq["window_f1"] > a.max_drop:
         errors.append(f"INT8 F1 drop {rf['window_f1'] - rq['window_f1']:.3f} > {a.max_drop}: "
@@ -182,10 +208,20 @@ def main(argv=None):
     missing = m.ops() - FIRMWARE_OPS
     if missing:
         errors.append(f"ops not registered in firmware: {sorted(missing)}")
+    full["checks"] = {"passed": not errors, "errors": errors, "max_drop": a.max_drop, "max_kb": a.max_kb}
+
+    with open(os.path.join(a.run, "report.json"), "w") as f:
+        json.dump(full, f, indent=2, default=str)
+    write_markdown(full, os.path.join(a.run, "REPORT.md"))
+    print(f"wrote {os.path.join(a.run, 'REPORT.md')}")
     if errors:
         sys.exit("export failed:\n  " + "\n  ".join(errors))
 
     write_headers(tflite_bytes, m, mean, std, a.threshold, a.gen_dir, report)
+    run_gen = os.path.join(a.run, "generated")
+    if os.path.abspath(run_gen) != os.path.abspath(a.gen_dir):
+        shutil.copytree(a.gen_dir, run_gen, dirs_exist_ok=True)
+        print(f"copied headers to {os.path.abspath(run_gen)}")
     print(f"wrote headers to {os.path.abspath(a.gen_dir)}")
 
 

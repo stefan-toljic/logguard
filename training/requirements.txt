@@ -1,5 +1,10 @@
-numpy>=1.26
+# Tested together on 22 Nov 2026 (Python 3.13, CPU): tensorflow 2.20.0,
+# numpy 2.2.6, scipy 1.18.1, datasets 3.6.0, librosa 0.11.0, soundfile 0.14.0.
+# train.py writes the versions actually used into run_config.json.
+numpy>=1.26,<2.3
 scipy>=1.11
-tensorflow>=2.16
-datasets>=2.19   # only for real training data (rfcx/frugalai)
+tensorflow==2.20.*      # CPU is enough for this DS-CNN; tf.lite converter still included
+datasets>=3.0,<4        # 4.x decodes audio with torchcodec; 3.x uses soundfile + librosa
+soundfile>=0.12
+librosa>=0.10           # needed by datasets 3.x to decode the audio column
 pytest>=8

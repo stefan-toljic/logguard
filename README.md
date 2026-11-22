@@ -8,6 +8,7 @@ MQTT to a laptop.
 | Folder | What it is |
 | --- | --- |
 | `training/` | DS-CNN training on rfcx/frugalai, INT8 export, firmware header generation |
+| `hpc/` | Slurm jobs and step-by-step guide (Montenegrin) for training on the UDG cluster |
 | `firmware/` | ESP-IDF 5.3 project for the ESP32-S3 (I2S mic, MFCC, TFLite Micro, MQTT) |
 | `server/` | Mosquitto broker and a Python receiver that logs alerts to SQLite |
 
@@ -29,15 +30,19 @@ MQTT to a laptop.
 ```sh
 cd training
 pip install -r requirements.txt
-python train.py --out runs/ds_cnn          # downloads rfcx/frugalai from Hugging Face
-python export.py --run runs/ds_cnn         # INT8, checks, writes firmware/main/generated/
+python prepare_data.py --out data/frugalai                 # once: download + check labels, fS, spectrum
+python train.py --data-dir data/frugalai --out runs/ds_cnn  # no network needed
+python export.py --run runs/ds_cnn         # INT8, checks, REPORT.md, writes firmware/main/generated/
 python -m pytest -q                        # unit tests + a small synthetic train/export
 ```
 
 `export.py` stops with an error if the INT8 window F1 drops more than 3 points
 against float, if the model is over 40 KB, or if the model uses an op the
 firmware does not register. To try the pipeline without downloading the dataset,
-use `python train.py --out runs/smoke --synthetic`. Synthetic data only checks
+use `python train.py --out runs/smoke --synthetic`. On the cluster, follow
+`hpc/UPUTSTVO.md` (`hpc/setup_env.sh`, `hpc/smoke.slurm`, `hpc/train.slurm`).
+The mel filterbank stops at 6 kHz (`features.FMAX`): rfcx/frugalai is 12 kHz,
+so training data has nothing above 6 kHz while the INMP441 passes up to 6.77 kHz. Synthetic data only checks
 the plumbing; never flash a model trained on it for a real test.
 
 ### 2. Check MFCC parity on the laptop

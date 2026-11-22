@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import sys
@@ -75,3 +76,44 @@ def test_train_and_export_smoke(tmp_path):
     assert (run / "chainsaw.tflite").stat().st_size < 40 * 1024
     for name in ("model_data.cc", "mfcc_tables.h", "selftest_vectors.h"):
         assert (gen / name).exists()
+
+
+def test_feature_config_reaches_tables(tmp_path):
+    try:
+        F.configure(fmax=5000)
+        assert F.config()["fmax"] == 5000
+        F.export_tables(tmp_path / "t.h")
+        assert "#define MFCC_FMAX_HZ 5000.0f" in (tmp_path / "t.h").read_text()
+        assert (F.mel_filterbank()[:, np.linspace(0, 8000, F.N_BINS) > 5000] == 0).all()
+    finally:
+        F.configure(fmax=6000)
+
+
+def test_alarm_rule_matches_firmware():
+    from logguard import metrics
+    y = np.array([1] * 5 + [0] * 5)
+    cid = np.array([0] * 5 + [1] * 5)
+    p = np.array([.9, .9, .1, .9, .9,   .9, .9, .9, .1, .1])
+    ya, fired = metrics.alarm_level(y, p, cid, threshold=0.8, consec=3)
+    assert list(fired) == [0, 1]        # clip 0 never has 3 in a row, clip 1 does
+
+
+@pytest.mark.slow
+def test_disk_dataset_parallel_train_export(tmp_path):
+    pytest.importorskip("datasets")
+    pytest.importorskip("tensorflow")
+    import export
+    import prepare_data
+    import train
+    from logguard import synthetic
+    data, run, gen = tmp_path / "data", tmp_path / "run", tmp_path / "gen"
+    synthetic.save_fake_dataset(str(data))
+    prepare_data.main(["--out", str(data), "--spectrum-clips", "10"])
+    summ = json.loads((data / "data_summary.json").read_text())
+    assert summ["splits"]["train"]["sample_rates_hz_sampled"] == [12000]
+    train.main(["--out", str(run), "--data-dir", str(data), "--workers", "2", "--epochs", "8"])
+    cfg = json.loads((run / "run_config.json").read_text())
+    assert cfg["data"]["train"]["clips_per_dataset_label"] == {"0": 40, "1": 40}
+    export.main(["--run", str(run), "--gen-dir", str(gen), "--max-drop", "1"])
+    assert (run / "REPORT.md").exists() and (run / "generated" / "model_data.cc").exists()
+    assert "#define MFCC_FMAX_HZ 6000.0f" in (gen / "mfcc_tables.h").read_text()
