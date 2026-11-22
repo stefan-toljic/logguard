@@ -18,7 +18,14 @@ N_MELS = 40
 N_MFCC = 40
 N_FRAMES = 1 + (WIN_SAMPLES - N_FFT) // HOP   # 49, no centre padding
 N_BINS = N_FFT // 2 + 1                        # 257
-FMIN, FMAX = 20.0, 8000.0
+FMIN = 20.0
+# Upper edge of the mel filterbank. rfcx/frugalai is recorded at 12 kHz, so it
+# holds nothing above 6 kHz (Nyquist); after resampling to 16 kHz the bands
+# 6-8 kHz are empty in training, while the INMP441 passes up to 0.423 * fS =
+# 6.77 kHz in the field. With FMAX = 6000 neither side sees that band.
+# Override with configure(fmax=...); the value travels with the run
+# (feature_config.json) and into mfcc_tables.h, so firmware always matches.
+FMAX = 6000.0
 LOG_EPS = 1e-6
 
 
@@ -62,6 +69,24 @@ def dct_matrix():
 _WINDOW = hann_window()
 _MEL = mel_filterbank()
 _DCT = dct_matrix()
+
+
+def configure(fmax=None):
+    """Change the parts of the front end that are allowed to vary per run."""
+    global FMAX, _MEL
+    if fmax is not None:
+        fmax = float(fmax)
+        if not FMIN < fmax <= SAMPLE_RATE / 2:
+            raise ValueError(f"fmax must be in ({FMIN}, {SAMPLE_RATE / 2}], got {fmax}")
+        FMAX = fmax
+        _MEL = mel_filterbank()
+
+
+def config():
+    """Everything that defines the features; saved with each run."""
+    return {"sample_rate": SAMPLE_RATE, "win_samples": WIN_SAMPLES, "hop_window": HOP_WINDOW,
+            "n_fft": N_FFT, "hop": HOP, "n_mels": N_MELS, "n_mfcc": N_MFCC,
+            "n_frames": N_FRAMES, "fmin": FMIN, "fmax": FMAX, "log_eps": LOG_EPS}
 
 
 def mfcc(window):
@@ -117,7 +142,9 @@ def export_tables(path):
         f"#define MFCC_N_FFT {N_FFT}\n#define MFCC_HOP {HOP}\n",
         f"#define MFCC_N_MELS {N_MELS}\n#define MFCC_N_MFCC {N_MFCC}\n",
         f"#define MFCC_N_FRAMES {N_FRAMES}\n#define MFCC_N_BINS {N_BINS}\n",
-        f"#define MFCC_LOG_EPS {LOG_EPS:.9e}f\n\n",
+        f"#define MFCC_LOG_EPS {LOG_EPS:.9e}f\n",
+        f"// Mel filterbank {FMIN:.0f}-{FMAX:.0f} Hz (training/logguard/features.py)\n",
+        f"#define MFCC_FMIN_HZ {FMIN:.1f}f\n#define MFCC_FMAX_HZ {FMAX:.1f}f\n\n",
         _c_array("mfcc_window", _WINDOW),
         "static const uint16_t mfcc_mel_start[%d] = {%s};\n"
         % (N_MELS, ", ".join(map(str, starts))),
