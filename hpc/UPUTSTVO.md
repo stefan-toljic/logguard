@@ -16,11 +16,14 @@ Adresa klastera, korisničko ime i lozinka se **ne upisuju** ni u jedan fajl u r
 | GPU | nema (`Gres=(null)`) |
 | RAM u Slurmu | `RealMemory=1` (1 MB): stvarni RAM nije upisan u konfiguraciju |
 | Slobodan RAM na node01 | `FreeMem=41056` MB, oko 40 GB (trenutno stanje, ne ukupni RAM) |
+| Slurm accounting | isključen (`sacct`: "Slurm accounting storage is disabled") |
+| Probni posao bez `--mem` | posao 5055 prošao na node02, prazan `.err` |
 
 Posljedice:
 
 - `--mem` ne smije u skriptu: svaki zahtjev veći od 1 MB Slurm odbija (vidi grešku ispod). Zato Slurm **ne ograničava i ne prati** memoriju posla. Ako posao potroši više RAM-a nego što čvor ima, sistem ga ubija bez jasne Slurm poruke (u `error_*.err` traži `Killed` ili `MemoryError`). **ENGINEERING DESIGN**
 - Procjena za ovaj trening: nekoliko GB (MFCC svih prozora + kopije za normalizaciju), što je daleko ispod 40 GB. Tačna vrijednost se vidi tek na pravom datasetu. **REQUIRES PHYSICAL VALIDATION**
+- `sacct` ne radi, pa nema statusa `COMPLETED`/`FAILED` poslije kraja. Uspjeh se čita iz loga: skripte na kraju pišu `SMOKE OK` ili `DONE`, a zbog `set -euo pipefail` prekidaju se na prvoj grešci, koja je tada u `logs/error_<JOBID>.err`.
 - Čvor dijele svi korisnici, pa skripta traži 16 od 96 jezgara, ne sve.
 - `RealMemory` podešava administrator klastera (u `slurm.conf`). Vrijedi javiti prof. Luki; dok se ne ispravi, radi se bez `--mem`.
 
@@ -121,7 +124,6 @@ Uspjeh: zadnji red `SMOKE OK: ...`. Ovo samo dokazuje da okruženje radi na rač
 sbatch hpc/train.slurm
 squeue -u $USER
 tail -f logs/out_<JOBID>.out           # Ctrl+C prekida samo praćenje, ne posao
-sacct -j <JOBID> --format=JobID,State,Elapsed,MaxRSS,ExitCode   # poslije kraja
 scancel <JOBID>                        # ako treba prekinuti
 ```
 
@@ -131,7 +133,7 @@ Podrazumijevano: 16 CPU (od 96 na čvoru), bez `--mem`, najviše 4 h, 40 epoha u
 sbatch --export=ALL,EPOCHS=60,SEED=1 hpc/train.slurm
 ```
 
-Procjena trajanja (**ENGINEERING DESIGN**, mjereno na 4 vCPU u cloudu sa sintetičkim podacima istog oblika): MFCC oko 270 klipova/s, trening oko 1 ms po prozoru po epohi. Broj klipova u frugalai saznaješ u koraku 3; svaki klip od 3 s daje 5 prozora. Na 16 jezgara treba da bude brže. Ako posao padne sa `TIME LIMIT`, povećaj `--time`. Ako u `error_*.err` piše `Killed` ili `MemoryError`, ponestalo je RAM-a na čvoru: javi, pa smanjujemo memoriju u kodu (`--mem` ovdje ne pomaže). Za vrijeme posla potrošnju vidiš sa `ssh node01 free -g` (ako je ssh na čvor dozvoljen) ili `sstat -j <JOBID> --format=MaxRSS`.
+Procjena trajanja (**ENGINEERING DESIGN**, mjereno na 4 vCPU u cloudu sa sintetičkim podacima istog oblika): MFCC oko 270 klipova/s, trening oko 1 ms po prozoru po epohi. Broj klipova u frugalai saznaješ u koraku 3; svaki klip od 3 s daje 5 prozora. Na 16 jezgara treba da bude brže. Ako posao padne sa `TIME LIMIT`, povećaj `--time`. Ako u `error_*.err` piše `Killed` ili `MemoryError`, ponestalo je RAM-a na čvoru: javi, pa smanjujemo memoriju u kodu (`--mem` ovdje ne pomaže). Za vrijeme posla potrošnju RAM-a vidiš sa `squeue -u $USER` (kolona NODELIST kaže na kom je čvoru), pa `ssh node02 free -g`, ako je ssh na čvor dozvoljen (nije provjereno).
 
 Posao je gotov kad zadnji red loga glasi `DONE: .../REPORT.md`. Ako `export.py` javi `export failed`, izvještaj je ipak napisan, a u njemu piše koja provjera je pala (INT8 pad F1 veći od 3 poena, model veći od 40 KB ili operacija koju firmver nema).
 
