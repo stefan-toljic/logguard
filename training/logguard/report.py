@@ -49,12 +49,19 @@ def write_markdown(full, path):
     s = full["summary"]
     chk = full["checks"]
 
+    rates = ", ".join(f"{r} Hz" for r in sorted({r for k in ("train", "test")
+                                               if isinstance(data.get(k), dict)
+                                               for r in data[k].get("sample_rates_hz", [])})) or "?"
+
     def split_line(name):
         d = data.get(name)
         if not isinstance(d, dict):
-            return f"| {name} | (nema podataka) | | | |"
+            return f"| {name} | (nema podataka) | | | | | |"
         cs = d.get("clip_seconds", {})
-        return (f"| {name} | {d.get('clips')} | {_counts(d.get('clips_per_dataset_label'))} | "
+        sk = d.get("skipped_short") or {}
+        return (f"| {name} | {d.get('clips_in_dataset', d.get('clips'))} | {sk.get('count', 0)} "
+                f"(praznih: {sk.get('empty', 0)}; {_counts(sk.get('per_dataset_label')) or '-'}) | "
+                f"{d.get('clips')} | {_counts(d.get('clips_per_dataset_label'))} | "
                 f"{', '.join(map(str, d.get('sample_rates_hz', [])))} | "
                 f"{_num(cs.get('min', 0), 2)} / {_num(cs.get('median', 0), 2)} / {_num(cs.get('max', 0), 2)} |")
 
@@ -65,6 +72,8 @@ def write_markdown(full, path):
         "## Uslovi (svi brojevi ispod važe samo uz njih)", "",
         f"- Izvor podataka: **{data.get('source', '?')}**"
         + (f", lokalna kopija `{data.get('data_dir')}`" if data.get("data_dir") else ""),
+        "- Pristup i licenca: rfcx/frugalai je zaključan (gated) dataset na Hugging Face; korišćenje "
+        "podliježe uslovima prihvaćenim na stranici dataseta (upisati ih uz ovaj izvještaj).",
         "- Labele: u datasetu "
         f"{rc.get('labels', {}).get('dataset_chainsaw_label', '?')} = motorna testera; "
         f"u modelu izlaz {rc.get('labels', {}).get('model_chainsaw_idx', '?')} = motorna testera.",
@@ -72,9 +81,14 @@ def write_markdown(full, path):
         "isti izvor kao trening (laboratorijski rezultat, nije teren).",
         f"- Validacija: {_num(100 * (args.get('val_frac') or 0), 0)} % cijelih klipova iz trening podjele (nijedan klip nije na obje strane).",
         "",
-        "| Podjela | Klipova | Klipova po labeli u datasetu | fS (Hz) | Dužina klipa min / med / max (s) |",
-        "|---|---|---|---|---|",
+        "| Podjela | Klipova u datasetu | Izostavljeno (kraće od 1 s; po labeli) | Korišćeno | "
+        "Korišćeno po labeli u datasetu | fS (Hz) | Dužina svih klipova min / med / max (s) |",
+        "|---|---|---|---|---|---|---|",
         split_line("train"), split_line("test"), "",
+        "Klipovi kraći od 1 s (uključujući prazne, 0 s) su izostavljeni: uređaj uvijek vidi pun prozor od 1 s. "
+        "Svaki prozor nosi labelu svog klipa (ako testera ne zvuči cijeli klip, neki prozori su pogrešno označeni). "
+        "**ENGINEERING DESIGN**",
+        "",
         f"Prozora: trening {win.get('train')}, validacija {win.get('val')}, test {win.get('test')}; "
         f"udio testere trening {_num(win.get('chainsaw_share_train', 0))}, test {_num(win.get('chainsaw_share_test', 0))}.",
         "",
@@ -83,7 +97,7 @@ def write_markdown(full, path):
         f"{feat.get('hop_window')} (0,5 s); FFT {feat.get('n_fft')}, hop {feat.get('hop')} "
         f"→ {feat.get('n_frames')} okvira × {feat.get('n_mfcc')} MFCC; mel {feat.get('n_mels')} "
         f"opsega od {feat.get('fmin', 0):.0f} do {feat.get('fmax', 0):.0f} Hz.",
-        "- Podaci od 12 kHz se prije MFCC preuzorkuju na 16 kHz (`resample_poly`). **ENGINEERING DESIGN**",
+        f"- Klipovi ({rates}) se prije MFCC preuzorkuju na 16 kHz (`resample_poly`). **ENGINEERING DESIGN**",
         "",
         f"Model: DS-CNN, {args.get('filters')} filtera, {args.get('blocks')} bloka, {rc.get('params')} parametara; "
         f"Adam lr {_num(args.get('lr') or 0, 4)}, batch {args.get('batch')}, epoha {rc.get('epochs_run')} od {args.get('epochs')} "
@@ -108,16 +122,36 @@ def write_markdown(full, path):
         _table("INT8, prag firmvera", full["test_int8_firmware"]),
         _table("INT8, prag 0,5", full["test_int8_at_0.5"]),
         _table("Float, prag 0,5", full["test_float_at_0.5"]),
-        "### Prag (INT8, nivo prozora)", "",
-        "| Prag | Preciznost | Odziv | F1 | FPR |", "|---|---|---|---|---|",
     ]
-    for r in full["test_int8_at_0.5"]["sweep"]:
-        lines.append(f"| {_num(r['threshold'], 2)} | {_pct(r['precision'])} | {_pct(r['recall'])} | "
-                     f"{_num(r['f1'])} | {_pct(r['fpr'])} |")
+
+    def sweep(rows):
+        out = ["| Prag | Prozor: preciznost | odziv | F1 | FPR | Alarm: preciznost | odziv | F1 | FPR |",
+               "|---|---|---|---|---|---|---|---|---|"]
+        for r in rows:
+            out.append(f"| {_num(r['threshold'], 2)} | {_pct(r['precision'])} | {_pct(r['recall'])} | "
+                       f"{_num(r['f1'])} | {_pct(r['fpr'])} | {_pct(r.get('alarm_precision', 0))} | "
+                       f"{_pct(r.get('alarm_recall', 0))} | {_num(r.get('alarm_f1', 0))} | "
+                       f"{_pct(r.get('alarm_fpr', 0))} |")
+        return out
+
+    val = full.get("val_int8_firmware")
+    lines += ["## Izbor praga (validacija, INT8)", "",
+              f"Prag firmvera {_num(full['test_int8_firmware']['threshold'], 2)} je podrazumijevana vrijednost iz "
+              "`Kconfig.projbuild` (`LOGGUARD_THRESHOLD_PCT`), postavljena prije treninga, ne birana na testu. "
+              "Novi prag se bira **samo iz tabele validacije** ispod; tabela na testu služi samo kao konačna "
+              "provjera, inače test više nije nezavisan. **ENGINEERING DESIGN**", ""]
+    if val:
+        lines += [f"Najbolji F1 alarma na validaciji: prag **{_num(val['best_alarm_f1_threshold'], 2)}**. "
+                  f"Validacija: {val['window']['n']} prozora, {val['alarm']['n']} klipova.", ""]
+        lines += sweep(val["sweep"]) + [""]
+    else:
+        lines += ["(Ovo pokretanje nema sačuvane validacione prozore; ponoviti trening.)", ""]
+    lines += ["### Isti pragovi na testu (samo informativno, ne birati prag odavde)", ""]
+    lines += sweep(full["test_int8_at_0.5"]["sweep"])
     lines += [
         "",
         "## Šta ovaj izvještaj NE pokazuje", "",
-        "- Rad na terenu i na INMP441: trening i test su iz istog izvora (rfcx/frugalai, 12 kHz). "
+        "- Rad na terenu i na INMP441: trening i test su iz istog izvora (rfcx/frugalai). "
         "Pad na terenu se očekuje. **REQUIRES PHYSICAL VALIDATION** (T2, T3)",
         "- Isti izlaz na ploči: provjerava T1 pri pokretanju (ESP-NN kerneli mogu zaokružiti za 1 korak). "
         "**REQUIRES PHYSICAL VALIDATION** (T1)",

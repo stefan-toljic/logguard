@@ -2,6 +2,9 @@
 
     python prepare_data.py --out data/frugalai
 
+rfcx/frugalai is gated: it needs a Hugging Face account that accepted its
+access conditions and a Read token in HF_TOKEN (only for this download).
+
 Run this where there is internet (on the cluster: the login node, or the
 laptop followed by scp). Training jobs then read the local copy with
 `--data-dir data/frugalai` and need no network.
@@ -62,7 +65,18 @@ def main(argv=None):
         dd, reused = load_from_disk(a.out), True
     else:
         reused = False
-        dd = load_dataset(D.DATASET, revision=a.revision)
+        try:
+            dd = load_dataset(D.DATASET, revision=a.revision)
+        except Exception as e:  # noqa: BLE001
+            if "gated" in str(e).lower() or "authenticat" in str(e).lower():
+                sys.exit(
+                    f"\n{D.DATASET} is a gated dataset: log in to huggingface.co, accept the access\n"
+                    f"conditions on https://huggingface.co/datasets/{D.DATASET} , create a Read token\n"
+                    "(Settings -> Access Tokens) and give it to this shell only:\n"
+                    "    read -s HF_TOKEN && export HF_TOKEN\n"
+                    "Never put the token in a file, the repository or a chat. See hpc/UPUTSTVO.md, step 3.\n"
+                    f"Original error: {e}")
+            raise
         dd.save_to_disk(a.out)
         dd = load_from_disk(a.out)
     print(dd)

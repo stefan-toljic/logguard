@@ -89,10 +89,21 @@ Pravi venv u `~/logguard_venv`, instalira `training/requirements.txt` i pušta b
 
 ## 3. Dataset (jednom, treba internet)
 
+rfcx/frugalai je **zaključan dataset** ("gated"): bez prijave skripta pada sa `DatasetNotFoundError: ... is a gated dataset on the Hub` (**VERIFIED**, klaster, 22. 11. 2026). Prije prvog preuzimanja, na laptopu u browseru:
+
+1. Napravi ili otvori nalog na huggingface.co.
+2. Na https://huggingface.co/datasets/rfcx/frugalai prihvati uslove pristupa. **Zapiši licencu i uslove** sa te stranice: oni su uslov korišćenja svakog modela istreniranog na ovim podacima i idu u izvještaj.
+3. *Settings → Access Tokens* → novi token tipa **Read**.
+
+Zatim na klasteru, u istoj sesiji:
+
 ```sh
 source ~/logguard_venv/bin/activate
+read -s HF_TOKEN && export HF_TOKEN     # zalijepi token pa Enter; ne vidi se na ekranu
 python training/prepare_data.py --out data/frugalai
 ```
+
+Token se ne upisuje ni u jedan fajl, skriptu, repo ni chat, i ne kuca se direktno u komandu (ostao bi u `~/.bash_history`). Važi samo dok je sesija otvorena. Slurm poslovi ga **ne trebaju**: čitaju lokalnu kopiju `data/frugalai` i rade bez mreže (`HF_HUB_OFFLINE=1`).
 
 Skida rfcx/frugalai, čuva lokalnu kopiju u `data/frugalai/` i piše `data/frugalai/data_summary.json`. Trening poslije **ne treba mrežu**.
 
