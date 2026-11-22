@@ -7,7 +7,13 @@
 #include "esp_timer.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
+// Newer esp-tflite-micro releases moved the schema header under
+// tensorflow/compiler/mlir/lite/ (build on ESP-IDF 5.5.6, 22 Nov 2026).
+#if __has_include("tensorflow/lite/schema/schema_generated.h")
 #include "tensorflow/lite/schema/schema_generated.h"
+#else
+#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
+#endif
 
 #include "generated/model_data.h"
 #include "generated/model_meta.h"
