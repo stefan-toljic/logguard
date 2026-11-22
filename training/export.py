@@ -196,8 +196,18 @@ def main(argv=None):
         "test_float_at_0.5": metrics.full_report(yt, pf, cidt, 0.5, a.consec),
         "test_int8_at_0.5": metrics.full_report(yt, pq, cidt, 0.5, a.consec),
         "test_int8_firmware": metrics.full_report(yt, pq, cidt, a.threshold, a.consec),
+        "val_int8_firmware": None,
         "run_config": run_config,
     }
+
+    # The threshold is chosen on validation windows, never on the test set.
+    if "Xv" in data.files:
+        pv = m.probs(n(data["Xv"]))[:, D.CHAINSAW_IDX]
+        val = metrics.full_report(data["yv"], pv, data["cidv"], a.threshold, a.consec)
+        best = max(val["sweep"], key=lambda r: r["alarm_f1"])
+        val["best_alarm_f1_threshold"] = best["threshold"]
+        full["val_int8_firmware"] = val
+        print(f"validation: best alarm F1 {best['alarm_f1']:.3f} at threshold {best['threshold']}")
 
     errors = []
     if rf["window_f1"] - rq["window_f1"] > a.max_drop:

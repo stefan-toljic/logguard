@@ -131,7 +131,8 @@ def main(argv=None):
     rng = np.random.default_rng(a.seed)
     rep = np.concatenate([rng.permutation(np.where(y[tr] == c)[0])[:250] for c in (0, 1)])
     np.savez_compressed(os.path.join(a.out, "data.npz"),
-                        rep=X[tr][rep], Xt=Xt, yt=yt, cidt=cidt)
+                        rep=X[tr][rep], Xt=Xt, yt=yt, cidt=cidt,
+                        Xv=X[va], yv=y[va], cidv=cid[va])
 
     config = {
         "args": vars(a),
@@ -139,10 +140,11 @@ def main(argv=None):
         "labels": {"dataset_chainsaw_label": D.DATASET_CHAINSAW_LABEL,
                    "model_chainsaw_idx": D.CHAINSAW_IDX, "class_names": D.CLASS_NAMES},
         "split": {"val": "whole clips from the train split, val_frac of them",
+                  "window_label": "every window gets the label of its clip",
                   "test": f"dataset split '{a.test_split}', never seen in training"},
         "windows": {"train": int(tr.sum()), "val": int(va.sum()), "test": int(len(yt)),
                     "chainsaw_share_train": float(y[tr].mean()), "chainsaw_share_test": float(yt.mean())},
-        "class_weight": {str(k): float(v) for k, v in class_weight.items()},
+        "class_weight": {D.CLASS_NAMES[k]: float(v) for k, v in class_weight.items()},
         "epochs_run": len(hist.history["loss"]),
         "data": data_summary,
         "versions": versions(),

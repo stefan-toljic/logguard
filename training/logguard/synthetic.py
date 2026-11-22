@@ -50,10 +50,14 @@ def save_fake_dataset(path, n_train=80, n_test=24, seed=0, sr=12000):
     feats = Features({"audio": Audio(sampling_rate=sr),
                       "label": ClassLabel(names=["chainsaw", "environment"])})
 
-    def split(n, s):
+    def split(n, s, short=False):
         rows = [{"audio": {"array": a, "sampling_rate": r}, "label": lab} for a, r, lab in clips(n, s, sr)]
+        if short:   # like rfcx/frugalai: some clips are empty or shorter than 1 s
+            rows += [{"audio": {"array": np.zeros(0, np.float32), "sampling_rate": sr}, "label": 0},
+                     {"audio": {"array": np.zeros(sr // 2, np.float32), "sampling_rate": sr}, "label": 1}]
         return Dataset.from_list(rows, features=feats)
 
-    DatasetDict({"train": split(n_train, seed), "test": split(n_test, seed + 1)}).save_to_disk(path)
+    DatasetDict({"train": split(n_train, seed, short=True),
+                 "test": split(n_test, seed + 1)}).save_to_disk(path)
     with open(f"{path}/{FAKE_MARKER}", "w") as f:
         f.write("synthetic stand-in, not rfcx/frugalai\n")

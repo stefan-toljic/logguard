@@ -113,7 +113,12 @@ def test_disk_dataset_parallel_train_export(tmp_path):
     assert summ["splits"]["train"]["sample_rates_hz_sampled"] == [12000]
     train.main(["--out", str(run), "--data-dir", str(data), "--workers", "2", "--epochs", "8"])
     cfg = json.loads((run / "run_config.json").read_text())
-    assert cfg["data"]["train"]["clips_per_dataset_label"] == {"0": 40, "1": 40}
+    tr = cfg["data"]["train"]
+    assert tr["clips_per_dataset_label"] == {"0": 40, "1": 40}
+    assert tr["clips_in_dataset"] == 82
+    assert tr["skipped_short"]["count"] == 2 and tr["skipped_short"]["empty"] == 1
     export.main(["--run", str(run), "--gen-dir", str(gen), "--max-drop", "1"])
+    report = json.loads((run / "report.json").read_text())
+    assert report["val_int8_firmware"]["best_alarm_f1_threshold"] in (0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95)
     assert (run / "REPORT.md").exists() and (run / "generated" / "model_data.cc").exists()
     assert "#define MFCC_FMAX_HZ 6000.0f" in (gen / "mfcc_tables.h").read_text()

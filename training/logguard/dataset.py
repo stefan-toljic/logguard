@@ -22,6 +22,10 @@ DATASET_CHAINSAW_LABEL = 0
 CHAINSAW_IDX = 1          # index of "chainsaw" in the model output
 CLASS_NAMES = ["environment", "chainsaw"]
 LABEL_COL = "label"
+# Clips shorter than one analysis window are left out: the device always sees
+# a full 1 s window, and rfcx/frugalai contains some empty (0 s) clips
+# (REPORT of job 5057, 22 Nov 2026). The count is written into the report.
+MIN_CLIP_S = 1.0
 AUDIO_COL = "audio"
 
 
@@ -87,15 +91,19 @@ def _features_chunk(job):
     data_dir, split, start, stop, fmax = job
     F.configure(fmax=fmax)
     ds = open_split(split, data_dir).select(range(start, stop))
-    X, y, n_win, info = [], [], [], []
+    X, y, n_win, info, skipped = [], [], [], [], []
     for s in ds:
         a, sr, lab = s[AUDIO_COL]["array"], s[AUDIO_COL]["sampling_rate"], s[LABEL_COL]
+        info.append((int(sr), len(a)))
+        if len(a) < MIN_CLIP_S * sr:
+            skipped.append((int(lab), len(a) / sr))
+            continue
         f = clip_features(a, sr)
         X.append(f)
         y.append(int(lab))
         n_win.append(len(f))
-        info.append((int(sr), len(a)))
-    return np.concatenate(X).astype(np.float32), y, n_win, info
+    Xc = (np.concatenate(X) if X else np.zeros((0, F.N_FRAMES, F.N_MFCC))).astype(np.float32)
+    return Xc, y, n_win, info, skipped
 
 
 def build_split(split, data_dir, limit=None, workers=1, cache_dir=None):
@@ -107,7 +115,7 @@ def build_split(split, data_dir, limit=None, workers=1, cache_dir=None):
     ds = open_split(split, data_dir)
     n = min(limit, len(ds)) if limit else len(ds)
     key = hashlib.sha1(json.dumps(
-        [getattr(ds, "_fingerprint", ""), split, n, F.config()], sort_keys=True).encode()).hexdigest()[:12]
+        [getattr(ds, "_fingerprint", ""), split, n, F.config(), MIN_CLIP_S], sort_keys=True).encode()).hexdigest()[:12]
     cache = os.path.join(cache_dir, f"features_{split}_{key}.npz") if cache_dir else None
     if cache and os.path.exists(cache):
         z = np.load(cache, allow_pickle=False)
@@ -127,6 +135,7 @@ def build_split(split, data_dir, limit=None, workers=1, cache_dir=None):
     labels = [lab for p in parts for lab in p[1]]
     n_win = [k for p in parts for k in p[2]]
     info = [i for p in parts for i in p[3]]
+    skipped = [k for p in parts for k in p[4]]
     y = np.repeat([to_target(lab) for lab in labels], n_win).astype(np.int64)
     cid = np.repeat(np.arange(len(labels)), n_win).astype(np.int64)
     srs = sorted({sr for sr, _ in info})
@@ -135,7 +144,15 @@ def build_split(split, data_dir, limit=None, workers=1, cache_dir=None):
         "split": split, "clips": len(labels), "windows": int(len(y)),
         "clips_per_dataset_label": {str(k): int(v) for k, v in
                                     zip(*np.unique(labels, return_counts=True))},
+        "clips_in_dataset": len(info),
+        "skipped_short": {
+            "min_seconds": MIN_CLIP_S, "count": len(skipped),
+            "empty": sum(1 for _, sec in skipped if sec == 0),
+            "per_dataset_label": {str(k): sum(1 for lab, _ in skipped if lab == k)
+                                  for k in sorted({lab for lab, _ in skipped})},
+        },
         "sample_rates_hz": srs,
+        # Lengths of ALL clips in the split, before the short ones are left out.
         "clip_seconds": {"min": round(float(secs.min()), 3), "median": round(float(np.median(secs)), 3),
                          "max": round(float(secs.max()), 3)},
         "fingerprint": getattr(ds, "_fingerprint", None),

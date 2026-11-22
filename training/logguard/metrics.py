@@ -75,9 +75,12 @@ def full_report(y, probs, cid, threshold, consec):
     for t in (0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95):
         p = (probs >= t).astype(int)
         s = scores(y, p)
+        sa = scores(*alarm_level(y, probs, cid, t, consec))
         sweep.append({"threshold": t, "precision": round(s["precision"], 4),
                       "recall": round(s["recall"], 4), "f1": round(s["f1"], 4),
-                      "fpr": round(s["fpr"], 5)})
+                      "fpr": round(s["fpr"], 5),
+                      "alarm_precision": round(sa["precision"], 4), "alarm_recall": round(sa["recall"], 4),
+                      "alarm_f1": round(sa["f1"], 4), "alarm_fpr": round(sa["fpr"], 5)})
     return {
         "threshold": threshold, "consec": consec,
         "window": win,
