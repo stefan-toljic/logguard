@@ -65,6 +65,8 @@ def write_markdown(full, path):
         "## Uslovi (svi brojevi ispod važe samo uz njih)", "",
         f"- Izvor podataka: **{data.get('source', '?')}**"
         + (f", lokalna kopija `{data.get('data_dir')}`" if data.get("data_dir") else ""),
+        "- Pristup i licenca: rfcx/frugalai je zaključan (gated) dataset na Hugging Face; korišćenje "
+        "podliježe uslovima prihvaćenim na stranici dataseta (upisati ih uz ovaj izvještaj).",
         "- Labele: u datasetu "
         f"{rc.get('labels', {}).get('dataset_chainsaw_label', '?')} = motorna testera; "
         f"u modelu izlaz {rc.get('labels', {}).get('model_chainsaw_idx', '?')} = motorna testera.",
