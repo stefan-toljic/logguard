@@ -6,6 +6,24 @@ Oznake: **VERIFIED** (provjereno) · **ENGINEERING DESIGN** (izbor/procjena) · 
 
 Adresa klastera, korisničko ime i lozinka se **ne upisuju** ni u jedan fajl u repou. Ispod piše `<korisnik>@<klaster>`: zamijeni ih samo u svom terminalu.
 
+## Stanje klastera (ispis `sinfo` i `scontrol`, 22. 11. 2026, **VERIFIED**)
+
+| Stavka | Vrijednost |
+|---|---|
+| Particija | `cpu` (podrazumijevana), vremensko ograničenje `infinite` |
+| Čvorovi | node01, node02 |
+| Jezgara po čvoru | 96 (`CPUTot=96`) |
+| GPU | nema (`Gres=(null)`) |
+| RAM u Slurmu | `RealMemory=1` (1 MB): stvarni RAM nije upisan u konfiguraciju |
+| Slobodan RAM na node01 | `FreeMem=41056` MB, oko 40 GB (trenutno stanje, ne ukupni RAM) |
+
+Posljedice:
+
+- `--mem` ne smije u skriptu: svaki zahtjev veći od 1 MB Slurm odbija (vidi grešku ispod). Zato Slurm **ne ograničava i ne prati** memoriju posla. Ako posao potroši više RAM-a nego što čvor ima, sistem ga ubija bez jasne Slurm poruke (u `error_*.err` traži `Killed` ili `MemoryError`). **ENGINEERING DESIGN**
+- Procjena za ovaj trening: nekoliko GB (MFCC svih prozora + kopije za normalizaciju), što je daleko ispod 40 GB. Tačna vrijednost se vidi tek na pravom datasetu. **REQUIRES PHYSICAL VALIDATION**
+- Čvor dijele svi korisnici, pa skripta traži 16 od 96 jezgara, ne sve.
+- `RealMemory` podešava administrator klastera (u `slurm.conf`). Vrijedi javiti prof. Luki; dok se ne ispravi, radi se bez `--mem`.
+
 ## 0. Šta pitati prof. Luku (ili provjeriti sam)
 
 Većinu može i sam da provjeriš poslije prijave (komanda desno).
@@ -13,13 +31,11 @@ Većinu može i sam da provjeriš poslije prijave (komanda desno).
 | # | Pitanje | Sam provjeri |
 |---|---|---|
 | 1 | Particija | **Riješeno** (`sinfo -N`, 22. 11. 2026): jedna particija `cpu` (podrazumijevana, zvjezdica), čvorovi node01 i node02. Upisana je u obje skripte. **VERIFIED** |
-| 2 | Broj jezgara i RAM po čvoru (da `--cpus-per-task=16` i `--mem=32G` stanu) | `sinfo -o "%P %l %D %c %m %G %N"` (particija, max vrijeme, broj čvorova, CPU, RAM u MB, GRES, čvorovi). GPU particije nema, a nije ni potreban |
+| 2 | Broj jezgara i RAM po čvoru | **Riješeno**: 96 jezgara, GPU nema, RAM nije upisan u Slurm (tabela iznad). **VERIFIED** |
 | 3 | Ima li prijavni čvor internet (za `pip` i Hugging Face) | `curl -sI https://huggingface.co \| head -1` i `curl -sI https://pypi.org \| head -1` |
 | 4 | Koju Python verziju koristiti (treba 3.9 do 3.13) i da li postoje moduli | `python3 --version`, `module avail python` |
 | 5 | Koliko diska imaš i gdje da držiš podatke (home ili scratch) | `df -h ~`, `quota -s` (ako postoji) |
-| 6 | Najduže dozvoljeno `--time` | kolona `%l` iz komande u redu 2 |
-
-Ako čvor ima manje od 16 jezgara (kolona `%c`), smanji `--cpus-per-task` u `hpc/train.slurm`, inače posao ostaje u redu čekanja sa razlogom `Resources` ili ga Slurm odbije.
+| 6 | Najduže dozvoljeno `--time` | **Riješeno**: `infinite`. Skripta ipak traži 4 h, da zaglavljen posao ne drži jezgra zauvijek |
 
 ### Greška "Memory specification can not be satisfied"
 
@@ -39,7 +55,7 @@ scontrol show node node01 | grep -Ei "RealMemory|CPUTot|AllocMem|CfgTRES"
 scontrol show config | grep -Ei "DefMemPer|MaxMemPer|SelectTypeParameters"
 ```
 
-- Ako je `RealMemory=1` (ili vrlo mali broj): uzrok je potvrđen. Radi bez `--mem` i javi prof. Luki, jer to podešava administrator klastera.
+- Ako je `RealMemory=1` (ili vrlo mali broj): uzrok je potvrđen (na node01 jeste, 22. 11. 2026). Radi bez `--mem` i javi prof. Luki, jer to podešava administrator klastera.
 - Ako je `RealMemory` normalan (npr. 64000 = 64 GB): `--mem` smije biti najviše toliko; vrati red sa jednim `#` i stavi manju vrijednost.
 
 ## 1. Prijava i kod
@@ -109,13 +125,13 @@ sacct -j <JOBID> --format=JobID,State,Elapsed,MaxRSS,ExitCode   # poslije kraja
 scancel <JOBID>                        # ako treba prekinuti
 ```
 
-Podrazumijevano: 16 CPU, 32 GB RAM, najviše 4 h, 40 epoha uz early stopping, prag 0,8 i 3 uzastopna prozora (isto kao u firmveru). Promjena bez izmjene fajla, npr.:
+Podrazumijevano: 16 CPU (od 96 na čvoru), bez `--mem`, najviše 4 h, 40 epoha uz early stopping, prag 0,8 i 3 uzastopna prozora (isto kao u firmveru). Promjena bez izmjene fajla, npr.:
 
 ```sh
 sbatch --export=ALL,EPOCHS=60,SEED=1 hpc/train.slurm
 ```
 
-Procjena trajanja (**ENGINEERING DESIGN**, mjereno na 4 vCPU u cloudu sa sintetičkim podacima istog oblika): MFCC oko 270 klipova/s, trening oko 1 ms po prozoru po epohi. Broj klipova u frugalai saznaješ u koraku 3; svaki klip od 3 s daje 5 prozora. Na 16 jezgara treba da bude brže. Ako posao padne sa `TIME LIMIT`, povećaj `--time`; ako padne zbog memorije (`OUT_OF_MEMORY`), povećaj `--mem`.
+Procjena trajanja (**ENGINEERING DESIGN**, mjereno na 4 vCPU u cloudu sa sintetičkim podacima istog oblika): MFCC oko 270 klipova/s, trening oko 1 ms po prozoru po epohi. Broj klipova u frugalai saznaješ u koraku 3; svaki klip od 3 s daje 5 prozora. Na 16 jezgara treba da bude brže. Ako posao padne sa `TIME LIMIT`, povećaj `--time`. Ako u `error_*.err` piše `Killed` ili `MemoryError`, ponestalo je RAM-a na čvoru: javi, pa smanjujemo memoriju u kodu (`--mem` ovdje ne pomaže). Za vrijeme posla potrošnju vidiš sa `ssh node01 free -g` (ako je ssh na čvor dozvoljen) ili `sstat -j <JOBID> --format=MaxRSS`.
 
 Posao je gotov kad zadnji red loga glasi `DONE: .../REPORT.md`. Ako `export.py` javi `export failed`, izvještaj je ipak napisan, a u njemu piše koja provjera je pala (INT8 pad F1 veći od 3 poena, model veći od 40 KB ili operacija koju firmver nema).
 
