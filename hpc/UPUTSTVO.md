@@ -12,14 +12,14 @@ Većinu može i sam da provjeriš poslije prijave (komanda desno).
 
 | # | Pitanje | Sam provjeri |
 |---|---|---|
-| 1 | Ime particije za CPU poslove i da li je `--partition` obavezan | `sinfo -o "%P %a %l %D %c %m %G %N"` (particija, dostupnost, max vrijeme, broj čvorova, CPU, RAM u MB, GRES, čvorovi) |
-| 2 | Imaju li node01/node02 GPU, i tačan GRES string (npr. `gpu:1`) | kolona `%G` iz iste komande. GPU **nije potreban** za ovaj model |
+| 1 | Particija | **Riješeno** (`sinfo -N`, 22. 11. 2026): jedna particija `cpu` (podrazumijevana, zvjezdica), čvorovi node01 i node02. Upisana je u obje skripte. **VERIFIED** |
+| 2 | Broj jezgara i RAM po čvoru (da `--cpus-per-task=16` i `--mem=32G` stanu) | `sinfo -o "%P %l %D %c %m %G %N"` (particija, max vrijeme, broj čvorova, CPU, RAM u MB, GRES, čvorovi). GPU particije nema, a nije ni potreban |
 | 3 | Ima li prijavni čvor internet (za `pip` i Hugging Face) | `curl -sI https://huggingface.co \| head -1` i `curl -sI https://pypi.org \| head -1` |
 | 4 | Koju Python verziju koristiti (treba 3.9 do 3.13) i da li postoje moduli | `python3 --version`, `module avail python` |
 | 5 | Koliko diska imaš i gdje da držiš podatke (home ili scratch) | `df -h ~`, `quota -s` (ako postoji) |
-| 6 | Najduže dozvoljeno `--time` | kolona `%l` iz komande 1 |
+| 6 | Najduže dozvoljeno `--time` | kolona `%l` iz komande u redu 2 |
 
-Ako `sinfo` pokaže da particija nije podrazumijevana, otkomentariši red `##SBATCH --partition=<PARTITION>` u `hpc/smoke.slurm` i `hpc/train.slurm` (ukloni jedan `#`) i upiši ime.
+Ako čvor ima manje od 16 jezgara ili 32 GB RAM-a (kolone `%c` i `%m`), smanji `--cpus-per-task` i `--mem` u `hpc/train.slurm`, inače posao ostaje u redu čekanja sa razlogom `Resources` ili ga Slurm odbije.
 
 ## 1. Prijava i kod
 

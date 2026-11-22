@@ -10,8 +10,8 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=8G
-# PLACEHOLDER: partition, only if the cluster requires one (ask prof. Luka / see `sinfo`)
-##SBATCH --partition=<PARTITION>
+# UDG cluster, `sinfo -N` on 22 Nov 2026: one partition "cpu" (default), node01 + node02
+#SBATCH --partition=cpu
 # Optional: pin to one node, as in Feliks's example
 ##SBATCH --nodelist=node01
 

@@ -10,12 +10,13 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=32G
-# PLACEHOLDER: partition, only if the cluster requires one (ask prof. Luka / see `sinfo`)
-##SBATCH --partition=<PARTITION>
+# UDG cluster, `sinfo -N` on 22 Nov 2026: one partition "cpu" (default), node01 + node02
+#SBATCH --partition=cpu
 # Optional: pin to one node, as in Feliks's example
 ##SBATCH --nodelist=node01
-# GPU is NOT needed (the model has ~8k parameters). Only if prof. Luka wants it on
-# a GPU: uncomment both lines with the real names, and install tensorflow[and-cuda].
+# GPU is NOT needed (the model has ~8k parameters), and on 22 Nov 2026 `sinfo` showed
+# no GPU partition. Only if one appears later: uncomment both lines with the real
+# names, and install tensorflow[and-cuda].
 ##SBATCH --partition=<GPU_PARTITION>
 ##SBATCH --gres=<GPU_GRES>              # e.g. gpu:1, the exact string is cluster specific
 
