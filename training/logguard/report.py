@@ -72,8 +72,12 @@ def write_markdown(full, path):
         "## Uslovi (svi brojevi ispod važe samo uz njih)", "",
         f"- Izvor podataka: **{data.get('source', '?')}**"
         + (f", lokalna kopija `{data.get('data_dir')}`" if data.get("data_dir") else ""),
-        "- Pristup i licenca: rfcx/frugalai je zaključan (gated) dataset na Hugging Face; korišćenje "
-        "podliježe uslovima prihvaćenim na stranici dataseta (upisati ih uz ovaj izvještaj).",
+        "- Pristup i licenca: rfcx/frugalai je zaključan (gated) dataset na Hugging Face, licenca "
+        "**CC BY-NC 4.0** (https://creativecommons.org/licenses/by-nc/4.0/; stranica dataseta, "
+        "pročitano 23. 11. 2026, **VERIFIED**). Uslovi: navesti izvor (rfcx, Rainforest Connection) i "
+        "licencu, naznačiti izmjene (ovdje: preuzorkovanje na 16 kHz, prozori od 1 s, MFCC) i bez "
+        "komercijalne upotrebe. Istraživanje i PoC su nekomercijalni; komercijalna upotreba modela "
+        "tražila bi posebnu dozvolu. **ENGINEERING DESIGN** (tumačenje, nije pravni savjet)",
         "- Labele: u datasetu "
         f"{rc.get('labels', {}).get('dataset_chainsaw_label', '?')} = motorna testera; "
         f"u modelu izlaz {rc.get('labels', {}).get('model_chainsaw_idx', '?')} = motorna testera.",
