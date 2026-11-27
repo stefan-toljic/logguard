@@ -1,0 +1,8 @@
+# Profile C: profile B with the lower threshold 0.60 (validation of job 5065:
+# alarm F1 0.928, FPR 3.1 %; not yet measured on the board). Compare with B on
+# the same labelled scenarios before choosing.
+CONFIG_LOGGUARD_PROFILE="C"
+CONFIG_LOGGUARD_THRESHOLD_PCT=60
+CONFIG_LOGGUARD_AUDIO_CLIP=y
+CONFIG_LOGGUARD_CLIP_PRE_S=5
+CONFIG_LOGGUARD_CLIP_POST_S=5
