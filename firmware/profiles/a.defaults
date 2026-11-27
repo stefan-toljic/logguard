@@ -1,0 +1,5 @@
+# Profile A: the PoC 1 demo shown to prof. Luka on 27 Nov 2026 (git tag v0.1-demo).
+# Threshold 0.80, 3 consecutive windows, no audio leaves the device.
+CONFIG_LOGGUARD_PROFILE="A"
+CONFIG_LOGGUARD_THRESHOLD_PCT=80
+# CONFIG_LOGGUARD_AUDIO_CLIP is not set

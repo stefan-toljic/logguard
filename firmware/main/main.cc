@@ -9,6 +9,7 @@
 #include "sdkconfig.h"
 
 #include "alert.h"
+#include "clip.h"
 #include "detector.h"
 #include "generated/mfcc_tables.h"
 #include "mic.h"
@@ -27,6 +28,7 @@ static void detector_task(void *arg)
     int64_t quiet_until = 0;
 
     ESP_ERROR_CHECK(mic_read(s_window, MFCC_WIN_SAMPLES));
+    clip_push(s_window, MFCC_WIN_SAMPLES);
     for (;;) {
         detection_t d;
         if (detector_run(s_window, &d) != ESP_OK) {
@@ -43,6 +45,7 @@ static void detector_task(void *arg)
                 alert_t a = {.score = d.chainsaw_prob, .raw = d.chainsaw_raw,
                              .ts_us = now, .windows = (uint32_t)consec};
                 alert_post(&a);
+                clip_trigger(now);
                 quiet_until = now + cooldown_us;
                 consec = 0;
             }
@@ -51,6 +54,7 @@ static void detector_task(void *arg)
         memmove(s_window, s_window + MFCC_HOP_WINDOW,
                 (MFCC_WIN_SAMPLES - MFCC_HOP_WINDOW) * sizeof(float));
         ESP_ERROR_CHECK(mic_read(s_window + MFCC_WIN_SAMPLES - MFCC_HOP_WINDOW, MFCC_HOP_WINDOW));
+        clip_push(s_window + MFCC_WIN_SAMPLES - MFCC_HOP_WINDOW, MFCC_HOP_WINDOW);
     }
 }
 
@@ -63,11 +67,20 @@ extern "C" void app_main(void)
     }
     ESP_ERROR_CHECK(err);
 
+    ESP_LOGI(TAG, "profile %s: threshold %d %%, %d windows, audio clip %s", CONFIG_LOGGUARD_PROFILE,
+             CONFIG_LOGGUARD_THRESHOLD_PCT, CONFIG_LOGGUARD_CONSEC_NEEDED,
+#if CONFIG_LOGGUARD_AUDIO_CLIP
+             "on"
+#else
+             "off"
+#endif
+    );
     ESP_ERROR_CHECK(detector_init());
 #if CONFIG_LOGGUARD_SELFTEST
     ESP_LOGI(TAG, "T1 self-test: %s", detector_selftest() ? "PASS" : "FAIL");
 #endif
     ESP_ERROR_CHECK(mic_init());
+    ESP_ERROR_CHECK(clip_init());
     ESP_ERROR_CHECK(alert_init());
 
     xTaskCreatePinnedToCore(detector_task, "detector", 8192, NULL, 5, NULL, 1);

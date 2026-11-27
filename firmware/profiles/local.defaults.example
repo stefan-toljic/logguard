@@ -1,0 +1,6 @@
+# Copy to local.defaults (ignored by git) and fill in. fw.bat adds it to every
+# profile, so Wi-Fi and MQTT settings are typed once, never committed.
+CONFIG_LOGGUARD_WIFI_SSID="logguard-hotspot"
+CONFIG_LOGGUARD_WIFI_PASSWORD=""
+CONFIG_LOGGUARD_MQTT_URI="mqtt://192.168.43.100:1883"
+CONFIG_LOGGUARD_MQTT_PASSWORD=""
