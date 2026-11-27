@@ -1,0 +1,7 @@
+# Profile B: same threshold as A (0.80) + audio clip, so the first test changes
+# only one thing. After every alert, 5 s before + 5 s after are sent as WAV over MQTT.
+CONFIG_LOGGUARD_PROFILE="B"
+CONFIG_LOGGUARD_THRESHOLD_PCT=80
+CONFIG_LOGGUARD_AUDIO_CLIP=y
+CONFIG_LOGGUARD_CLIP_PRE_S=5
+CONFIG_LOGGUARD_CLIP_POST_S=5

@@ -4,9 +4,14 @@
 
 Prints the end-to-end latency of every alert (detection on the device to
 arrival here), which is one of the measured values in the test protocol.
+
+Firmware profile B also sends a WAV clip after every alert on
+logguard/audio/<device_id>/<ts_us>; it is saved in --clips (default clips/)
+as <device_id>_<ts_us>.wav, so a person can listen and confirm the alert.
 """
 import argparse
 import json
+import os
 import sqlite3
 import time
 
@@ -15,6 +20,9 @@ CREATE TABLE IF NOT EXISTS alerts(
     id INTEGER PRIMARY KEY, device_id TEXT, ts_us INTEGER, time_synced INTEGER,
     recv_us INTEGER, latency_ms REAL, class TEXT, score REAL, score_int8 INTEGER,
     windows INTEGER, rssi INTEGER, raw TEXT);
+CREATE TABLE IF NOT EXISTS clips(
+    id INTEGER PRIMARY KEY, device_id TEXT, ts_us INTEGER, recv_us INTEGER,
+    bytes INTEGER, seconds REAL, path TEXT);
 CREATE TABLE IF NOT EXISTS status(
     id INTEGER PRIMARY KEY, device_id TEXT, recv_us INTEGER, uptime_s INTEGER,
     free_heap INTEGER, pending INTEGER, raw TEXT);
@@ -52,7 +60,31 @@ def store(db, topic, payload, recv_us=None):
     return row
 
 
+def store_clip(db, topic, payload, clip_dir, recv_us=None):
+    """Save a WAV clip from logguard/audio/<device_id>/<ts_us>; returns the row."""
+    parts = topic.split("/")
+    if len(parts) != 4 or parts[:2] != ["logguard", "audio"]:
+        raise ValueError("expected logguard/audio/<device_id>/<ts_us>")
+    device_id, ts_us = parts[2], int(parts[3])
+    if payload[:4] != b"RIFF" or payload[8:12] != b"WAVE":
+        raise ValueError("payload is not a WAV file")
+    byte_rate = int.from_bytes(payload[28:32], "little")
+    os.makedirs(clip_dir, exist_ok=True)
+    path = os.path.join(clip_dir, f"{device_id}_{ts_us}.wav")
+    with open(path, "wb") as f:
+        f.write(payload)
+    recv_us = recv_us if recv_us is not None else int(time.time() * 1e6)
+    row = dict(device_id=device_id, ts_us=ts_us, recv_us=recv_us, bytes=len(payload),
+               seconds=(len(payload) - 44) / byte_rate if byte_rate else None, path=path)
+    db.execute("INSERT INTO clips(device_id, ts_us, recv_us, bytes, seconds, path) "
+               "VALUES(?, ?, ?, ?, ?, ?)", list(row.values()))
+    db.commit()
+    return row
+
+
 def describe(topic, row):
+    if topic.startswith("logguard/audio/"):
+        return f"CLIP {row['device_id']} {row['seconds']:.1f} s saved to {row['path']}"
     if topic.startswith("logguard/alerts/"):
         lat = f"{row['latency_ms']:.0f} ms" if row["latency_ms"] is not None else "n/a (clock not synced)"
         return (f"ALERT {row['device_id']} score={row['score']:.2f} windows={row['windows']} "
@@ -69,17 +101,22 @@ def main(argv=None):
     p.add_argument("--user", default="logguard")
     p.add_argument("--password", required=True)
     p.add_argument("--db", default="alerts.db")
+    p.add_argument("--clips", default="clips", help="folder for audio clips (profile B)")
     a = p.parse_args(argv)
 
     db = open_db(a.db)
 
     def on_connect(client, userdata, flags, reason_code, properties):
         print(f"connected to {a.host}:{a.port} ({reason_code})")
-        client.subscribe([("logguard/alerts/#", 1), ("logguard/status/#", 1)])
+        client.subscribe([("logguard/alerts/#", 1), ("logguard/status/#", 1),
+                          ("logguard/audio/#", 1)])
 
     def on_message(client, userdata, msg):
         try:
-            row = store(db, msg.topic, msg.payload.decode())
+            if msg.topic.startswith("logguard/audio/"):
+                row = store_clip(db, msg.topic, msg.payload, a.clips)
+            else:
+                row = store(db, msg.topic, msg.payload.decode())
             if row:
                 print(time.strftime("%H:%M:%S"), describe(msg.topic, row), flush=True)
         except (ValueError, KeyError) as e:

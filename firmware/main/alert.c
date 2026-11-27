@@ -18,6 +18,8 @@
 #include "mqtt_client.h"
 #include "sdkconfig.h"
 
+#include "clip.h"
+
 static const char *TAG = "alert";
 
 #define BIT_WIFI_UP   BIT0
@@ -26,6 +28,7 @@ static const char *TAG = "alert";
 
 #define WIFI_TIMEOUT_MS 15000
 #define MQTT_TIMEOUT_MS 10000
+#define CLIP_TIMEOUT_MS 60000   // a 10 s clip is about 320 KB
 #define PENDING_MAX 16
 
 static EventGroupHandle_t s_events;
@@ -42,6 +45,17 @@ static int s_pending_n;
 
 static char s_topic_alert[64];
 static char s_topic_status[64];
+
+#if CONFIG_LOGGUARD_AUDIO_CLIP
+typedef struct {
+    const uint8_t *wav;
+    size_t len;
+    int64_t ts_us;
+} clip_msg_t;
+
+static QueueHandle_t s_clip_queue;
+static QueueSetHandle_t s_set;
+#endif
 
 int64_t alert_now_us(void)
 {
@@ -131,15 +145,20 @@ static void mqtt_down(void)
     }
 }
 
-// QoS 1 publish that waits for the broker's PUBACK.
-static bool publish(const char *topic, const char *payload)
+// QoS 1 publish that waits for the broker's PUBACK. len 0 = payload is a string.
+static bool publish_n(const char *topic, const char *data, int len, int timeout_ms)
 {
     xEventGroupClearBits(s_events, BIT_PUBLISHED);
-    s_published_id = esp_mqtt_client_publish(s_mqtt, topic, payload, 0, 1, 0);
+    s_published_id = esp_mqtt_client_publish(s_mqtt, topic, data, len, 1, 0);
     if (s_published_id < 0) return false;
     EventBits_t b = xEventGroupWaitBits(s_events, BIT_PUBLISHED, pdTRUE, pdTRUE,
-                                        pdMS_TO_TICKS(MQTT_TIMEOUT_MS));
+                                        pdMS_TO_TICKS(timeout_ms));
     return b & BIT_PUBLISHED;
+}
+
+static bool publish(const char *topic, const char *payload)
+{
+    return publish_n(topic, payload, 0, MQTT_TIMEOUT_MS);
 }
 
 static int wifi_rssi(void)
@@ -170,14 +189,14 @@ static void flush_pending(void)
 }
 
 // Connects if needed, sends, and drops the radio again in on-demand mode.
-static bool deliver(const char *topic, const char *payload)
+static bool deliver_n(const char *topic, const char *data, int len, int timeout_ms)
 {
     bool ok = false;
     for (int attempt = 0; attempt < 3 && !ok; attempt++) {
         if (attempt) vTaskDelay(pdMS_TO_TICKS(2000));
         if (!wifi_up() || !mqtt_up()) continue;
         flush_pending();
-        ok = publish(topic, payload);
+        ok = publish_n(topic, data, len, timeout_ms);
     }
 #if CONFIG_LOGGUARD_WIFI_ON_DEMAND
     mqtt_down();
@@ -186,6 +205,26 @@ static bool deliver(const char *topic, const char *payload)
     return ok;
 }
 
+static bool deliver(const char *topic, const char *payload)
+{
+    return deliver_n(topic, payload, 0, MQTT_TIMEOUT_MS);
+}
+
+#if CONFIG_LOGGUARD_AUDIO_CLIP
+// One try (3 attempts) per clip; a clip that fails is not kept, the alert itself is.
+static void send_clip(const clip_msg_t *c)
+{
+    char topic[96];
+    snprintf(topic, sizeof(topic), "logguard/audio/%s/%lld", CONFIG_LOGGUARD_DEVICE_ID,
+             (long long)c->ts_us);
+    int64_t t0 = esp_timer_get_time();
+    bool ok = deliver_n(topic, (const char *)c->wav, (int)c->len, CLIP_TIMEOUT_MS);
+    clip_release();
+    ESP_LOGI(TAG, "clip %u B mqtt=%s in %lld ms", (unsigned)c->len, ok ? "ok" : "FAIL",
+             (long long)((esp_timer_get_time() - t0) / 1000));
+}
+#endif
+
 static void alert_task(void *arg)
 {
     const TickType_t wait = CONFIG_LOGGUARD_HEARTBEAT_MIN > 0
@@ -193,7 +232,18 @@ static void alert_task(void *arg)
     char payload[256];
     alert_t a;
     for (;;) {
-        if (xQueueReceive(s_queue, &a, wait) == pdTRUE) {
+#if CONFIG_LOGGUARD_AUDIO_CLIP
+        QueueSetMemberHandle_t m = xQueueSelectFromSet(s_set, wait);
+        if (m == s_clip_queue) {
+            clip_msg_t c;
+            if (xQueueReceive(s_clip_queue, &c, 0) == pdTRUE) send_clip(&c);
+            continue;
+        }
+        bool got = m == s_queue && xQueueReceive(s_queue, &a, 0) == pdTRUE;
+#else
+        bool got = xQueueReceive(s_queue, &a, wait) == pdTRUE;
+#endif
+        if (got) {
             int64_t t0 = esp_timer_get_time();
             // Connect first so the payload can carry the Wi-Fi RSSI.
             bool up = wifi_up();
@@ -226,6 +276,12 @@ esp_err_t alert_init(void)
     snprintf(s_topic_status, sizeof(s_topic_status), "logguard/status/%s", CONFIG_LOGGUARD_DEVICE_ID);
     s_events = xEventGroupCreate();
     s_queue = xQueueCreate(8, sizeof(alert_t));
+#if CONFIG_LOGGUARD_AUDIO_CLIP
+    s_clip_queue = xQueueCreate(1, sizeof(clip_msg_t));
+    s_set = xQueueCreateSet(8 + 1);
+    xQueueAddToSet(s_queue, s_set);
+    xQueueAddToSet(s_clip_queue, s_set);
+#endif
 
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
@@ -260,4 +316,17 @@ esp_err_t alert_init(void)
 void alert_post(const alert_t *a)
 {
     if (xQueueSend(s_queue, a, 0) != pdTRUE) ESP_LOGW(TAG, "alert queue full, dropped");
+}
+
+void alert_post_clip(const uint8_t *wav, size_t len, int64_t ts_us)
+{
+#if CONFIG_LOGGUARD_AUDIO_CLIP
+    clip_msg_t c = {.wav = wav, .len = len, .ts_us = ts_us};
+    if (xQueueSend(s_clip_queue, &c, 0) != pdTRUE) {
+        ESP_LOGW(TAG, "clip queue full, dropped");
+        clip_release();
+    }
+#else
+    (void)wav; (void)len; (void)ts_us;
+#endif
 }

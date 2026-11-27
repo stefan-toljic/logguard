@@ -2,6 +2,7 @@
 // Replaces the LTE/SMS alert_send from the Phase 5 draft.
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 
 #include "esp_err.h"
@@ -22,6 +23,10 @@ esp_err_t alert_init(void);
 
 // Queue an alert; never blocks the audio path.
 void alert_post(const alert_t *a);
+
+// Queue a WAV clip for sending (profile B). The buffer stays owned by clip.c;
+// the alert task calls clip_release() when done with it.
+void alert_post_clip(const uint8_t *wav, size_t len, int64_t ts_us);
 
 // Current time in epoch microseconds (or since boot if not synced).
 int64_t alert_now_us(void);

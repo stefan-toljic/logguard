@@ -6,6 +6,13 @@ menu "LogGuard"
         help
             Sent in every MQTT message and used in the topic logguard/alerts/<id>.
 
+    config LOGGUARD_PROFILE
+        string "Firmware profile"
+        default "A"
+        help
+            Printed at boot, so every log shows which firmware version ran.
+            Set by profiles/<name>.defaults (see fw.bat).
+
     menu "Wi-Fi and MQTT"
         config LOGGUARD_WIFI_SSID
             string "Wi-Fi SSID"
@@ -68,6 +75,27 @@ menu "LogGuard"
         config LOGGUARD_SELFTEST
             bool "Run the MFCC and model parity self-test (T1) at boot"
             default y
+    endmenu
+
+    menu "Audio clip on alert"
+        config LOGGUARD_AUDIO_CLIP
+            bool "Send an audio clip after every alert"
+            default n
+            help
+                Keeps the last seconds of audio in PSRAM. After an alert the device
+                sends a 16-bit 16 kHz WAV clip on logguard/audio/<id>/<ts_us> so a
+                person can listen and confirm or reject the alert. Off = no audio
+                ever leaves the device (profile A).
+        config LOGGUARD_CLIP_PRE_S
+            int "Seconds before the alert"
+            depends on LOGGUARD_AUDIO_CLIP
+            range 1 10
+            default 5
+        config LOGGUARD_CLIP_POST_S
+            int "Seconds after the alert"
+            depends on LOGGUARD_AUDIO_CLIP
+            range 1 10
+            default 5
     endmenu
 
     menu "INMP441 pins"
